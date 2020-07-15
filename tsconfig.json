@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
+    "strict": true,
+    "moduleResolution": "node",
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "lib": ["es2015", "esnext.asynciterable"],
+    "sourceMap": true,
+    // "inlineSourceMap": true,
+    "typeRoots": [
+      "./node_modules/@types",
+      "./types",
+      "./node_modules/web3/types"
+    ],
+    "types": [
+      "node",
+      "chai-bignumber",
+      "./gen/truffle-contracts/types",
+      "./types/truffle",
+      "@openzeppelin/test-helpers"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@testUtils/*" : [ "testUtils/*" ],
+      "@gen/*" : [ "gen/*" ]
+    }
+  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "example",
+    "build"
+  ]
+}

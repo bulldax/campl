@@ -1,0 +1,54 @@
+{
+  "name": "campl",
+  "version": "0.1.0",
+  "description": "",
+  "main": "truffle-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^3.0.1",
+    "@openzeppelin/test-helpers": "^0.5.5",
+    "@typechain/truffle-v5": "^2.0.2",
+    "@types/chai": "^4.2.11",
+    "@types/chai-as-promised": "^7.1.2",
+    "@types/mocha": "^7.0.2",
+    "@types/node": "^14.0.4",
+    "bignumber.js": "^9.0.0",
+    "bn.js": "^5.1.2",
+    "chai-as-promised": "^7.1.1",
+    "chai-bignumber": "^3.0.0",
+    "chai-bn": "^0.2.1",
+    "ethlint": "^1.2.5",
+    "ganache-cli": "^6.9.1",
+    "module-alias": "^2.2.2",
+    "tiny-promisify": "^1.0.0",
+    "truffle": "^5.1.26",
+    "truffle-typings": "^1.0.8",
+    "ts-generator": "^0.0.8",
+    "ts-node": "^8.10.1",
+    "typechain": "^2.0.0",
+    "typechain-target-truffle": "^1.0.2",
+    "typescript": "^3.9.3",
+    "web3": "^1.2.9"
+  },
+  "dependencies": {},
+  "scripts": {
+    "clean": "rm -Rf build gen",
+    "generate": "npx truffle compile && typechain --target 'truffle-v5' './build/contracts/*.json' --outDir gen/truffle-contracts",
+    "g": "yarn generate",
+    "prepare": "yarn generate",
+    "deploy-gsn": "npx gsn start",
+    "test": "./scripts/launch.sh npx truffle test",
+    "totaltest": "yarn clean && yarn lint && yarn generate && yarn test",
+    "lint": "npx solium -d contracts/",
+    "tsc": "tsc --noEmit",
+    "flat": "truffle-flattener contracts/Campl.sol > flattened/flattenedCampl.sol"
+  },
+  "_moduleAliases": {
+    "@testUtils": "testUtils",
+    "@gen": "gen"
+  },
+  "author": "Park Jongseok",
+  "license": "MIT"
+}

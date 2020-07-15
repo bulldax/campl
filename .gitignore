@@ -1,0 +1,10 @@
+node_modules/
+ganache-log
+testchain-log
+gsn-log
+build/
+.idea
+.DS_Store
+yarn-error.log 
+gen/
+flattened/
