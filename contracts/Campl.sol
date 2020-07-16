@@ -17,7 +17,6 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     }
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override(ERC20) {
-        sync();
         emit Move(_msgSender(), from, to, amount, toUnderlyingForReclaim(amount));
     }
 
@@ -26,6 +25,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     }
 
     function issue(address to, uint256 derivativeAmount) external override {
+        require(derivativeAmount != 0, "Campl.issue: 0 amount");
         uint256 underlyingAmount = toUnderlyingForIssue(derivativeAmount);
 
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issue: not enough AMPL allowance");
@@ -37,6 +37,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     }
 
     function issueIn(address to, uint256 underlyingAmount) external override {
+        require(underlyingAmount != 0, "Campl.issueIn: 0 amount");
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issueIn: not enough AMPL allowance");
         uint256 derivativeAmount = toDerivativeForIssue(underlyingAmount);
         ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
@@ -47,6 +48,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     }
 
     function reclaim(address to, uint256 derivativeAmount) external override {
+        require(derivativeAmount != 0, "Campl.reclaim: 0 amount");
         uint256 underlyingAmount = toUnderlyingForReclaim(derivativeAmount);
         // TODO: remove
         require(ampl.balanceOf(address(this)) >= underlyingAmount, "Campl.reclaim: not enough AMPL balance");
@@ -59,6 +61,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
 
     function reclaimIn(address to, uint256 underlyingAmount) external override {
         // TODO: remove
+        require(underlyingAmount != 0, "Campl.reclaimIn: 0 amount");
         require(ampl.balanceOf(address(this)) >= underlyingAmount, "Campl.reclaimIn: not enough AMPL balance");
         uint256 derivativeAmount = toDerivativeForReclaim(underlyingAmount);
 

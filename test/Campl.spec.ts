@@ -562,7 +562,7 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
         });
 
-        describe("Ampl value integrity test", async () => {
+        describe.skip("Ampl value integrity test", async () => {
             let accounts: string[] = [];
             let accounts2: string[] = [];
             before(async () => {
@@ -844,11 +844,61 @@ contract("Campl", ([deployer, user1, user2]) => {
                     expect(await campl.toDerivativeForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
                 });
 
+                it("small number", async () => {
+                    expect(await campl.toUnderlyingForIssue(ONE)).to.be.bignumber.eq(ONE);
+                    expect(await campl.toUnderlyingForReclaim(ONE)).to.be.bignumber.eq(new BN("0"));
+                    expect(await campl.toDerivativeForIssue(ONE)).to.be.bignumber.eq(new BN("2000000000"));
+                    expect(await campl.toDerivativeForReclaim(ONE)).to.be.bignumber.eq(new BN("2000000000"));
+
+                    expect(await campl.toUnderlyingForIssue(TWO)).to.be.bignumber.eq(new BN("1"));
+                    expect(await campl.toUnderlyingForReclaim(TWO)).to.be.bignumber.eq(new BN("0"));
+                    expect(await campl.toDerivativeForIssue(TWO)).to.be.bignumber.eq(new BN("4000000000"));
+                    expect(await campl.toDerivativeForReclaim(TWO)).to.be.bignumber.eq(new BN("4000000000"));
+
+                    expect(await campl.toUnderlyingForIssue(new BN(10))).to.be.bignumber.eq(new BN("1"));
+                    expect(await campl.toUnderlyingForReclaim(new BN(10))).to.be.bignumber.eq(new BN("0"));
+                    expect(await campl.toDerivativeForIssue(new BN(10))).to.be.bignumber.eq(new BN("20000000000"));
+                    expect(await campl.toDerivativeForReclaim(new BN(10))).to.be.bignumber.eq(new BN("20000000000"));
+
+                    expect(await campl.toUnderlyingForIssue(new BN(100))).to.be.bignumber.eq(new BN("1"));
+                    expect(await campl.toUnderlyingForReclaim(new BN(100))).to.be.bignumber.eq(new BN("0"));
+                    expect(await campl.toDerivativeForIssue(new BN(100))).to.be.bignumber.eq(new BN("200000000000"));
+                    expect(await campl.toDerivativeForReclaim(new BN(100))).to.be.bignumber.eq(new BN("200000000000"));
+                });
+
                 it("constants.MAX_UINT256", async () => {
                     await expectRevert(campl.toUnderlyingForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
                     await expectRevert(campl.toDerivativeForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
                     await expectRevert(campl.toUnderlyingForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
                     await expectRevert(campl.toDerivativeForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                });
+
+                it("toUnderlyingForIssue possible large amount", async () => {
+                    let camplAmount = "1000000000000000000000000000000000000000000000000000000000000"; // 1e60
+                    let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                    expect(await campl.toUnderlyingForIssue(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                    await expectRevert(campl.toUnderlyingForIssue(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                });
+
+                it("toUnderlyingForReclaim possible large amount", async () => {
+                    let camplAmount = "1000000000000000000000000000000000000000000000000000000000000"; // 1e60
+                    let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                    expect(await campl.toUnderlyingForReclaim(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                    await expectRevert(campl.toUnderlyingForReclaim(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                });
+
+                it("toDerivativeForIssue possible large amount", async () => {
+                    let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                    let expectAmount = "2000000000000000000000000000000000000000000000000000000000000"; // 2 x 1e60
+                    expect(await campl.toDerivativeForIssue(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                    await expectRevert(campl.toDerivativeForIssue(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
+                });
+
+                it("toDerivativeForReclaim possible large amount", async () => {
+                    let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                    let expectAmount = "2000000000000000000000000000000000000000000000000000000000000"; // 2 x 1e60
+                    expect(await campl.toDerivativeForReclaim(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                    await expectRevert(campl.toDerivativeForReclaim(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
                 });
 
                 it("toUnderlyingForIssue & rebase", async () => {
@@ -926,6 +976,241 @@ contract("Campl", ([deployer, user1, user2]) => {
                     expect(await campl.toUnderlyingForReclaim(
                         await campl.toDerivativeForIssue(amplAmount))).to.be.bignumber.eq(amplAmount);
                 });
+
+                describe("totalSupply x 10000", async () => {
+                    before(async () => {
+                        await blockchain.saveSnapshotAsync();
+
+                        const targetTotalSupply = (await ampl.totalSupply()).mul(new BN(10000));
+                        await rebaseToTotalSupply(targetTotalSupply);
+                    });
+
+                    after(async () => {
+                        await blockchain.revertAsync();
+                    });
+
+                    it("zero", async () => {
+                        expect(await campl.toUnderlyingForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toDerivativeForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toUnderlyingForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toDerivativeForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                    });
+
+                    it("small number", async () => {
+                        expect(await campl.toUnderlyingForIssue(ONE)).to.be.bignumber.eq(ONE);
+                        expect(await campl.toUnderlyingForReclaim(ONE)).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(ONE)).to.be.bignumber.eq(new BN("200000"));
+                        expect(await campl.toDerivativeForReclaim(ONE)).to.be.bignumber.eq(new BN("200000"));
+
+                        expect(await campl.toUnderlyingForIssue(TWO)).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(TWO)).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(TWO)).to.be.bignumber.eq(new BN("400000"));
+                        expect(await campl.toDerivativeForReclaim(TWO)).to.be.bignumber.eq(new BN("400000"));
+
+                        expect(await campl.toUnderlyingForIssue(new BN(10))).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(new BN(10))).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(new BN(10))).to.be.bignumber.eq(new BN("2000000"));
+                        expect(await campl.toDerivativeForReclaim(new BN(10))).to.be.bignumber.eq(new BN("2000000"));
+
+                        expect(await campl.toUnderlyingForIssue(new BN(100))).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(new BN(100))).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(new BN(100))).to.be.bignumber.eq(new BN("20000000"));
+                        expect(await campl.toDerivativeForReclaim(new BN(100))).to.be.bignumber.eq(new BN("20000000"));
+                    });
+
+                    it("constants.MAX_UINT256", async () => {
+                        await expectRevert(campl.toUnderlyingForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toDerivativeForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toUnderlyingForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toDerivativeForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForIssue possible large amount", async () => {
+                        let camplAmount = "100000000000000000000000000000000000000000000000000000000"; // 1e56
+                        let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                        expect(await campl.toUnderlyingForIssue(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toUnderlyingForIssue(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForReclaim possible large amount", async () => {
+                        let camplAmount = "100000000000000000000000000000000000000000000000000000000"; // 1e56
+                        let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                        expect(await campl.toUnderlyingForReclaim(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toUnderlyingForReclaim(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toDerivativeForIssue possible large amount", async () => {
+                        let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                        let expectAmount = "200000000000000000000000000000000000000000000000000000000"; // 2 x 1e56
+                        expect(await campl.toDerivativeForIssue(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toDerivativeForIssue(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toDerivativeForReclaim possible large amount", async () => {
+                        let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                        let expectAmount = "200000000000000000000000000000000000000000000000000000000"; // 2 x 1e56
+                        expect(await campl.toDerivativeForReclaim(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toDerivativeForReclaim(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForIssue & rebase", async () => {
+                        const camplAmount = e18(1);
+                        const amplAmount = e9(5000);
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                    });
+
+                    it("toDerivativeForIssue & rebase", async () => {
+                        const amplAmount = e9(10000);
+                        const camplAmount = e18(2);
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                    });
+
+                    it("toUnderlyingForReclaim & rebase", async () => {
+                        const camplAmount = e18(1);
+                        const amplAmount = e9(5000);
+                        expect(await campl.toUnderlyingForReclaim(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                    });
+
+                    it("toDerivativeForReclaim & rebase", async () => {
+                        const amplAmount = e9(10000);
+                        const camplAmount = e18(2);
+                        expect(await campl.toDerivativeForReclaim(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                    });
+
+                });
+
+                describe("totalSupply / 10000", async () => {
+                    before(async () => {
+                        await blockchain.saveSnapshotAsync();
+
+                        const targetTotalSupply = (await ampl.totalSupply()).div(new BN(10000));
+                        await rebaseToTotalSupply(targetTotalSupply);
+                    });
+
+                    after(async () => {
+                        await blockchain.revertAsync();
+                    });
+
+                    it("zero", async () => {
+                        expect(await campl.toUnderlyingForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toDerivativeForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toUnderlyingForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                        expect(await campl.toDerivativeForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                    });
+
+                    it("small number", async () => {
+                        expect(await campl.toUnderlyingForIssue(ONE)).to.be.bignumber.eq(ONE);
+                        expect(await campl.toUnderlyingForReclaim(ONE)).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(ONE)).to.be.bignumber.eq(new BN("20000000000000"));
+                        expect(await campl.toDerivativeForReclaim(ONE)).to.be.bignumber.eq(new BN("20000000000000"));
+
+                        expect(await campl.toUnderlyingForIssue(TWO)).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(TWO)).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(TWO)).to.be.bignumber.eq(new BN("40000000000000"));
+                        expect(await campl.toDerivativeForReclaim(TWO)).to.be.bignumber.eq(new BN("40000000000000"));
+
+                        expect(await campl.toUnderlyingForIssue(new BN(10))).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(new BN(10))).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(new BN(10))).to.be.bignumber.eq(new BN("200000000000000"));
+                        expect(await campl.toDerivativeForReclaim(new BN(10))).to.be.bignumber.eq(new BN("200000000000000"));
+
+                        expect(await campl.toUnderlyingForIssue(new BN(100))).to.be.bignumber.eq(new BN("1"));
+                        expect(await campl.toUnderlyingForReclaim(new BN(100))).to.be.bignumber.eq(new BN("0"));
+                        expect(await campl.toDerivativeForIssue(new BN(100))).to.be.bignumber.eq(new BN("2000000000000000"));
+                        expect(await campl.toDerivativeForReclaim(new BN(100))).to.be.bignumber.eq(new BN("2000000000000000"));
+                    });
+
+                    it("constants.MAX_UINT256", async () => {
+                        await expectRevert(campl.toUnderlyingForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toDerivativeForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toUnderlyingForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                        await expectRevert(campl.toDerivativeForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForIssue possible large amount", async () => {
+                        let camplAmount = "10000000000000000000000000000000000000000000000000000000000000000"; // 1e64
+                        let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                        expect(await campl.toUnderlyingForIssue(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toUnderlyingForIssue(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForReclaim possible large amount", async () => {
+                        let camplAmount = "10000000000000000000000000000000000000000000000000000000000000000"; // 1e64
+                        let expectAmount = "500000000000000000000000000000000000000000000000000"; // 5 x 1e50
+                        expect(await campl.toUnderlyingForReclaim(new BN(camplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toUnderlyingForReclaim(new BN(camplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toDerivativeForIssue possible large amount", async () => {
+                        let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                        let expectAmount = "20000000000000000000000000000000000000000000000000000000000000000"; // 2 x 1e64
+                        expect(await campl.toDerivativeForIssue(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toDerivativeForIssue(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toDerivativeForReclaim possible large amount", async () => {
+                        let amplAmount = "1000000000000000000000000000000000000000000000000000"; // 1e51
+                        let expectAmount = "20000000000000000000000000000000000000000000000000000000000000000"; // 2 x 1e64
+                        expect(await campl.toDerivativeForReclaim(new BN(amplAmount))).to.be.bignumber.eq(new BN(expectAmount));
+                        await expectRevert(campl.toDerivativeForReclaim(new BN(amplAmount + "0")), "SafeMath: multiplication overflow");
+                    });
+
+                    it("toUnderlyingForIssue & rebase", async () => {
+                        const camplAmount = e18(1);
+                        const amplAmount = e9(0.00005);
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                    });
+
+                    it("toDerivativeForIssue & rebase", async () => {
+                        const amplAmount = e9(0.0001);
+                        const camplAmount = e18(2);
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                    });
+
+                    it("toUnderlyingForReclaim & rebase", async () => {
+                        const camplAmount = e18(1);
+                        const amplAmount = e9(0.00005);
+                        expect(await campl.toUnderlyingForReclaim(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                    });
+
+                    it("toDerivativeForReclaim & rebase", async () => {
+                        const amplAmount = e9(0.0001);
+                        const camplAmount = e18(2);
+                        expect(await campl.toDerivativeForReclaim(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                        const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                        await ampl.rebase(rebaseDelta, {from: deployer});
+                        expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                    });
+                });
             });
 
             describe("issue", async () => {
@@ -939,29 +1224,85 @@ contract("Campl", ([deployer, user1, user2]) => {
                     await blockchain.revertAsync();
                 });
 
-                async function issueTest(from: string, to: string) {
-                    const camplAmount = e18(10);
-                    const amplAmount = await campl.toUnderlyingForIssue(camplAmount);
+                async function issueTest(from: string, to: string, approveAmplAmount: BN, issueCamplAmount: BN) {
 
-                    await ampl.approve(campl.address, amplAmount, {from: from});
+                    const [amplDiff, camplDiff] = await getDiffs(async () => {
+                        await ampl.approve(campl.address, approveAmplAmount, {from: from});
+                        await campl.issue(to, issueCamplAmount, {from: from});
+                    });
 
-                    await campl.issue(to, camplAmount, {from: from});
+                    const amplAmount = await campl.toUnderlyingForIssue(issueCamplAmount);
+
+                    expect(getBN(amplDiff, from)).to.be.bignumber.eq(amplAmount.neg());
+                    expect(getBN(camplDiff, to)).to.be.bignumber.eq(issueCamplAmount);
                 }
 
                 it("success: to myself", async () => {
+                    const issueCamplAmount = e18(10);
+                    const approveAmplAmount = await campl.toUnderlyingForIssue(issueCamplAmount);
 
+                    await issueTest(user1, user1, approveAmplAmount, issueCamplAmount);
                 });
 
                 it("success: to other", async () => {
+                    const issueCamplAmount = e18(10);
+                    const approveAmplAmount = await campl.toUnderlyingForIssue(issueCamplAmount);
 
+                    await issueTest(user1, user2, approveAmplAmount, issueCamplAmount);
                 });
 
-                it("fail: ..", async () => {
+                it("success: all my ample balance", async () => {
+                    const amplBalance = await ampl.balanceOf(user1);
+                    const camplAmount = await campl.toDerivativeForIssue(amplBalance);
 
+                    await issueTest(user1, user2, constants.MAX_UINT256, camplAmount);
                 });
 
-                it("fail: ..", async () => {
+                it("fail: not enough allowance", async () => {
+                    const issueCamplAmount = e18(10);
+                    const approveAmplAmount = await campl.toUnderlyingForIssue(issueCamplAmount);
 
+                    await expectRevert(
+                        issueTest(user1, user2, approveAmplAmount.sub(ONE), issueCamplAmount),
+                        "Campl.issue: not enough AMPL allowance"
+                    );
+                });
+
+                it("fail: issue too much amount", async () => {
+                    const issueCamplAmount = constants.MAX_UINT256;
+
+                    await expectRevert(
+                        issueTest(user1, user2, constants.MAX_UINT256, issueCamplAmount),
+                        "SafeMath: multiplication overflow"
+                    );
+                });
+
+                it("fail: to is ZERO_ADDRESS", async () => {
+                    const issueCamplAmount = e18(10);
+
+                    await expectRevert(
+                        issueTest(user1, ZERO_ADDRESS, constants.MAX_UINT256, issueCamplAmount),
+                        "ERC20: mint to the zero address"
+                    );
+                });
+
+                it("fail: zero amount", async () => {
+                    const issueCamplAmount = ZERO;
+
+                    await expectRevert(
+                        issueTest(user1, user2, constants.MAX_UINT256, issueCamplAmount),
+                        "Campl.issue: 0 amount"
+                    );
+                });
+
+                it("fail: more than ampl balance", async () => {
+                    const amplBalance = await ampl.balanceOf(user1);
+                    const camplAmount = await campl.toDerivativeForIssue(amplBalance.add(ONE));
+
+                    await expectRevert(
+                        issueTest(user1, user2, constants.MAX_UINT256, camplAmount),
+                        "SafeMath: subtraction overflow"
+                    );
                 });
             });
 
@@ -974,17 +1315,6 @@ contract("Campl", ([deployer, user1, user2]) => {
                     await blockchain.revertAsync();
                 });
 
-                it("success to myself", async () => {
-
-                });
-
-                it("success to other", async () => {
-
-                });
-
-                it("fail when ..", async () => {
-
-                });
             });
 
             describe("reclaim", async () => {
