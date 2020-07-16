@@ -562,7 +562,7 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
         });
 
-        describe.skip("Ampl value integrity test", async () => {
+        describe("Ampl value integrity test", async () => {
             let accounts: string[] = [];
             let accounts2: string[] = [];
             before(async () => {
@@ -1214,8 +1214,6 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
 
             describe("issue", async () => {
-                const targetEvents = ["Issue", "Move", "Reclaim"];
-
                 beforeEach(async () => {
                     await blockchain.saveSnapshotAsync();
                 });
@@ -1225,7 +1223,6 @@ contract("Campl", ([deployer, user1, user2]) => {
                 });
 
                 async function issueTest(from: string, to: string, approveAmplAmount: BN, issueCamplAmount: BN) {
-
                     const [amplDiff, camplDiff] = await getDiffs(async () => {
                         await ampl.approve(campl.address, approveAmplAmount, {from: from});
                         await campl.issue(to, issueCamplAmount, {from: from});
@@ -1235,6 +1232,9 @@ contract("Campl", ([deployer, user1, user2]) => {
 
                     expect(getBN(amplDiff, from)).to.be.bignumber.eq(amplAmount.neg());
                     expect(getBN(camplDiff, to)).to.be.bignumber.eq(issueCamplAmount);
+
+                    const logs = await getContractLogs(campl, ["Issue", "Move", "Reclaim"], await getLatestBlockNumber());
+                    checkLogWhenIssue(logs, from, to, issueCamplAmount, amplAmount);
                 }
 
                 it("success: to myself", async () => {
@@ -1249,6 +1249,10 @@ contract("Campl", ([deployer, user1, user2]) => {
                     const approveAmplAmount = await campl.toUnderlyingForIssue(issueCamplAmount);
 
                     await issueTest(user1, user2, approveAmplAmount, issueCamplAmount);
+                });
+
+                it("success: small amount", async () => {
+                    await issueTest(user1, user2, constants.MAX_UINT256, ONE);
                 });
 
                 it("success: all my ample balance", async () => {
@@ -1301,7 +1305,7 @@ contract("Campl", ([deployer, user1, user2]) => {
 
                     await expectRevert(
                         issueTest(user1, user2, constants.MAX_UINT256, camplAmount),
-                        "SafeMath: subtraction overflow"
+                        "Campl.issue: not enough AMPL balance"
                     );
                 });
             });
@@ -1315,9 +1319,99 @@ contract("Campl", ([deployer, user1, user2]) => {
                     await blockchain.revertAsync();
                 });
 
+                async function issueInTest(from: string, to: string, approveAmplAmount: BN, amplAmount: BN) {
+                    const [amplDiff, camplDiff] = await getDiffs(async () => {
+                        await ampl.approve(campl.address, approveAmplAmount, {from: from});
+                        await campl.issueIn(to, amplAmount, {from: from});
+                    });
+
+                    const camplAmount = await campl.toDerivativeForIssue(amplAmount);
+
+                    expect(getBN(amplDiff, from)).to.be.bignumber.eq(amplAmount.neg());
+                    expect(getBN(camplDiff, to)).to.be.bignumber.eq(camplAmount);
+
+                    const logs = await getContractLogs(campl, ["Issue", "Move", "Reclaim"], await getLatestBlockNumber());
+                    checkLogWhenIssue(logs, from, to, camplAmount, amplAmount);
+                }
+
+                it("success: to myself", async () => {
+                    const amplAmount = e9(10);
+                    const approveAmplAmount = amplAmount;
+
+                    await issueInTest(user1, user1, approveAmplAmount, amplAmount);
+                });
+
+                it("success: to other", async () => {
+                    const amplAmount = e9(10);
+                    const approveAmplAmount = amplAmount;
+
+                    await issueInTest(user1, user2, approveAmplAmount, amplAmount);
+                });
+
+                it("success: small amount", async () => {
+                    await issueInTest(user1, user2, constants.MAX_UINT256, ONE);
+                });
+
+                it("success: all my ample balance", async () => {
+                    const amplBalance = await ampl.balanceOf(user1);
+
+                    await issueInTest(user1, user2, constants.MAX_UINT256, amplBalance);
+                });
+
+                it("fail: not enough allowance", async () => {
+                    const amplAmount = e9(10);
+
+                    await expectRevert(
+                        issueInTest(user1, user2, amplAmount.sub(ONE), amplAmount),
+                        "Campl.issueIn: not enough AMPL allowance"
+                    );
+                });
+
+                it("fail: issue too much amount", async () => {
+                    const amplAmount = constants.MAX_UINT256;
+
+                    await expectRevert(
+                        issueInTest(user1, user2, constants.MAX_UINT256, amplAmount),
+                        "Campl.issueIn: not enough AMPL balance"
+                    );
+                });
+
+                it("fail: to is ZERO_ADDRESS", async () => {
+                    const amplAmount = e9(10);
+
+                    await expectRevert(
+                        issueInTest(user1, ZERO_ADDRESS, constants.MAX_UINT256, amplAmount),
+                        "ERC20: mint to the zero address"
+                    );
+                });
+
+                it("fail: zero amount", async () => {
+                    const amplAmount = ZERO;
+
+                    await expectRevert(
+                        issueInTest(user1, user2, constants.MAX_UINT256, amplAmount),
+                        "Campl.issueIn: 0 amount"
+                    );
+                });
+
+                it("fail: more than ampl balance", async () => {
+                    const amplBalance = await ampl.balanceOf(user1);
+
+                    await expectRevert(
+                        issueInTest(user1, user2, constants.MAX_UINT256, amplBalance.add(ONE)),
+                        "Campl.issueIn: not enough AMPL balance"
+                    );
+                });
             });
 
             describe("reclaim", async () => {
+                before(async () => {
+                    await blockchain.saveSnapshotAsync();
+
+                    await ampl.approve(campl.address, constants.MAX_UINT256, {from: user1});
+                    await campl.issueIn(user1, e9(10000), {from: user1});
+                });
+
                 beforeEach(async () => {
                     await blockchain.saveSnapshotAsync();
                 });
@@ -1326,20 +1420,69 @@ contract("Campl", ([deployer, user1, user2]) => {
                     await blockchain.revertAsync();
                 });
 
-                it("success to myself", async () => {
-
+                after(async () => {
+                    await blockchain.revertAsync();
                 });
 
-                it("success to other", async () => {
+                async function reclaimTest(from: string, to: string, camplAmount: BN) {
+                    const [amplDiff, camplDiff] = await getDiffs(async () => {
+                        await campl.reclaim(to, camplAmount, {from: from});
+                    });
 
+                    const amplAmount = await campl.toUnderlyingForReclaim(camplAmount);
+
+                    expect(getBN(camplDiff, from)).to.be.bignumber.eq(camplAmount.neg());
+                    expect(getBN(amplDiff, campl.address)).to.be.bignumber.eq(amplAmount.neg());
+                    expect(getBN(amplDiff, to)).to.be.bignumber.eq(amplAmount);
+
+                    const logs = await getContractLogs(campl, ["Issue", "Move", "Reclaim"], await getLatestBlockNumber());
+                    checkLogWhenReclaim(logs, from, to, camplAmount, amplAmount);
+                }
+
+                it("success: to myself", async () => {
+                    await reclaimTest(user1, user1, e18(10));
                 });
 
-                it("fail when ..", async () => {
+                it("success: to other", async () => {
+                    await reclaimTest(user1, user2, e18(10));
+                });
 
+                it("success: all balance", async () => {
+                    const camplBalance = await campl.balanceOf(user1);
+                    await reclaimTest(user1, user2, camplBalance);
+                });
+
+                it("fail: more than campl balance", async () => {
+                    const camplBalance = await campl.balanceOf(user1);
+                    await expectRevert(
+                        reclaimTest(user1, user2, camplBalance.add(ONE)),
+                        "ERC20: burn amount exceeds balance"
+                    );
+                });
+
+                it("fail: to is ZERO_ADDRESS", async () => {
+                    await expectRevert(
+                        reclaimTest(user1, ZERO_ADDRESS, e18(1)),
+                        "Campl.reclaim: reclaim to the zero address"
+                    );
+                });
+
+                it("fail: 0 amount", async () => {
+                    await expectRevert(
+                        reclaimTest(user1, user2, ZERO),
+                        "Campl.reclaim: 0 amount"
+                    );
                 });
             });
 
             describe("reclaimIn", async () => {
+                before(async () => {
+                    await blockchain.saveSnapshotAsync();
+
+                    await ampl.approve(campl.address, constants.MAX_UINT256, {from: user1});
+                    await campl.issueIn(user1, e9(10000), {from: user1});
+                });
+
                 beforeEach(async () => {
                     await blockchain.saveSnapshotAsync();
                 });
@@ -1348,16 +1491,58 @@ contract("Campl", ([deployer, user1, user2]) => {
                     await blockchain.revertAsync();
                 });
 
-                it("success to myself", async () => {
-
+                after(async () => {
+                    await blockchain.revertAsync();
                 });
 
-                it("success to other", async () => {
+                async function reclaimInTest(from: string, to: string, amplAmount: BN) {
+                    const camplAmount = await campl.toDerivativeForReclaim(amplAmount);
+                    const [amplDiff, camplDiff] = await getDiffs(async () => {
+                        await campl.reclaimIn(to, amplAmount, {from: from});
+                    });
 
+                    expect(getBN(camplDiff, from)).to.be.bignumber.eq(camplAmount.neg());
+                    expect(getBN(amplDiff, campl.address)).to.be.bignumber.eq(amplAmount.neg());
+                    expect(getBN(amplDiff, to)).to.be.bignumber.eq(amplAmount);
+
+                    const logs = await getContractLogs(campl, ["Issue", "Move", "Reclaim"], await getLatestBlockNumber());
+                    checkLogWhenReclaim(logs, from, to, camplAmount, amplAmount);
+                }
+
+                it("success: to myself", async () => {
+                    await reclaimInTest(user1, user1, e9(10));
                 });
 
-                it("fail when ..", async () => {
+                it("success: to other", async () => {
+                    await reclaimInTest(user1, user2, e9(10));
+                });
 
+                it("success: all balance", async () => {
+                    const underlyingBalance = await campl.underlyingBalanceOf(user1);
+                    await reclaimInTest(user1, user2, underlyingBalance);
+                });
+
+                it("fail: more than campl balance", async () => {
+                    const underlyingBalance = await campl.underlyingBalanceOf(user1);
+
+                    await expectRevert(
+                        reclaimInTest(user1, user2, underlyingBalance.add(ONE)),
+                        "ERC20: burn amount exceeds balance"
+                    );
+                });
+
+                it("fail: to is ZERO_ADDRESS", async () => {
+                    await expectRevert(
+                        reclaimInTest(user1, ZERO_ADDRESS, e18(1)),
+                        "Campl.reclaimIn: reclaimIn to the zero address"
+                    );
+                });
+
+                it("fail: 0 amount", async () => {
+                    await expectRevert(
+                        reclaimInTest(user1, user2, ZERO),
+                        "Campl.reclaimIn: 0 amount"
+                    );
                 });
             });
         });

@@ -29,6 +29,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
         uint256 underlyingAmount = toUnderlyingForIssue(derivativeAmount);
 
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issue: not enough AMPL allowance");
+        require(ampl.balanceOf(_msgSender()) >= underlyingAmount, "Campl.issue: not enough AMPL balance");
         ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
 
         _mint(to, derivativeAmount);
@@ -39,6 +40,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     function issueIn(address to, uint256 underlyingAmount) external override {
         require(underlyingAmount != 0, "Campl.issueIn: 0 amount");
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issueIn: not enough AMPL allowance");
+        require(ampl.balanceOf(_msgSender()) >= underlyingAmount, "Campl.issueIn: not enough AMPL balance");
         uint256 derivativeAmount = toDerivativeForIssue(underlyingAmount);
         ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
 
@@ -49,9 +51,9 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
 
     function reclaim(address to, uint256 derivativeAmount) external override {
         require(derivativeAmount != 0, "Campl.reclaim: 0 amount");
+        require(to != address(0), "Campl.reclaim: reclaim to the zero address");
+
         uint256 underlyingAmount = toUnderlyingForReclaim(derivativeAmount);
-        // TODO: remove
-        require(ampl.balanceOf(address(this)) >= underlyingAmount, "Campl.reclaim: not enough AMPL balance");
 
         _burn(_msgSender(), derivativeAmount);
 
@@ -60,9 +62,8 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     }
 
     function reclaimIn(address to, uint256 underlyingAmount) external override {
-        // TODO: remove
         require(underlyingAmount != 0, "Campl.reclaimIn: 0 amount");
-        require(ampl.balanceOf(address(this)) >= underlyingAmount, "Campl.reclaimIn: not enough AMPL balance");
+        require(to != address(0), "Campl.reclaimIn: reclaimIn to the zero address");
         uint256 derivativeAmount = toDerivativeForReclaim(underlyingAmount);
 
         _burn(_msgSender(), derivativeAmount);
