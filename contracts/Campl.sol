@@ -10,7 +10,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     using SafeMath for uint256;
 
     IERC20 ampl;
-    uint256 constant E27 = 1.00E27;
+    uint256 constant E26 = 1.00E26;
 
     constructor(IERC20 _ampl) public ERC20("Compatable AMPL", "CAMPL") {
         ampl = _ampl;
@@ -79,20 +79,20 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
         return toUnderlyingForReclaim(balanceOf(account));
     }
 
-    function toUnderlyingForIssue(uint256 derivativeAmount) public view override returns(uint256 underlyingAmount) {
-        return roundUpDiv(derivativeAmount.mul(ampl.totalSupply()), E27);
+    function toUnderlyingForIssue(uint256 derivativeAmount) public view override returns(uint256) {
+        return roundUpDiv(derivativeAmount.mul(ampl.totalSupply()), E26);
     }
 
-    function toDerivativeForIssue(uint256 underlyingAmount) public view override returns(uint256 derivativeAmount) {
-        return underlyingAmount.mul(E27).div(ampl.totalSupply());
+    function toDerivativeForIssue(uint256 underlyingAmount) public view override returns(uint256) {
+        return underlyingAmount.mul(E26).div(ampl.totalSupply());
     }
 
-    function toUnderlyingForReclaim(uint256 derivativeAmount) public view override returns(uint256 underlyingAmount) {
-        return derivativeAmount.mul(ampl.totalSupply()).div(E27);
+    function toUnderlyingForReclaim(uint256 derivativeAmount) public view override returns(uint256) {
+        return derivativeAmount.mul(ampl.totalSupply()).div(E26);
     }
 
-    function toDerivativeForReclaim(uint256 underlyingAmount) public view override returns(uint256 derivativeAmount) {
-        return roundUpDiv(underlyingAmount.mul(E27), ampl.totalSupply());
+    function toDerivativeForReclaim(uint256 underlyingAmount) public view override returns(uint256) {
+        return roundUpDiv(underlyingAmount.mul(E26), ampl.totalSupply());
     }
 }
 

@@ -16,10 +16,9 @@ import {
 import Web3 from 'web3';
 
 import { e9, e18 } from '@testUtils/units';
-import { ZERO, ONE, TWO, THREE, ONE_HUNDRED } from '@testUtils/constants';
+import { ZERO, ONE, TWO, THREE, ONE_HUNDRED, ZERO_ADDRESS } from '@testUtils/constants';
 
-
-import { expectRevert, singletons } from '@openzeppelin/test-helpers';
+import { expectRevert, constants } from '@openzeppelin/test-helpers';
 import { hexlify, keccak256, toUtf8Bytes } from 'ethers/utils'
 import { ecsign, ECDSASignature } from 'ethereumjs-util'
 
@@ -29,6 +28,7 @@ import { ALPN_ENABLED } from 'constants';
 import { Account, getSnapshot, Snapshot, Snap, getValueByAddress, getValue } from '@testUtils/snapshot';
 import { bnSnapshotDiff, getBN } from '@testUtils/bnSnapshot';
 import { getDiffieHellman } from 'crypto';
+import { getContractLogs, LogData, Log } from '@testUtils/printLogs';
 
 const web3: Web3 = getWeb3();
 const blockchain = new Blockchain(web3.currentProvider);
@@ -58,6 +58,9 @@ async function getAmplStatus(ampl: AmplMockInstance) {
     return msg;
 }
 
+async function getLatestBlockNumber(): Promise<number> {
+    return (await web3.eth.getBlock('latest')).number;
+}
 
 contract("Campl", ([deployer, user1, user2]) => {
     let campl: CamplInstance;
@@ -66,6 +69,7 @@ contract("Campl", ([deployer, user1, user2]) => {
     const symbol = "CAMPL";
     const decimal = new BN(18);
 
+    const bigNum = e18(1).mul(e18(1)).mul(e18(1));
     function getName(account: string) {
         return (account == deployer) ? "deployer" : (account == user1) ? "user1" : "user2";
     }
@@ -133,6 +137,17 @@ contract("Campl", ([deployer, user1, user2]) => {
         await ampl.rebase(supplyDelta);
     }
 
+    async function getCamplDiff(fn: () => Promise<void>): Promise<[Snapshot]> {
+        const camplSnapShot1 = await getCamplBalanceSnapshot();
+
+        await fn();
+
+        const camplSnapShot2 = await getCamplBalanceSnapshot();
+
+        const camplDiff = bnSnapshotDiff(camplSnapShot1, camplSnapShot2);
+        return [camplDiff];
+    }
+
     async function getDiffs(fn: () => Promise<void>): Promise<[Snapshot, Snapshot]> {
         const amplSnapShot1 = await getAmplBalanceSnapshot();
         const camplSnapShot1 = await getCamplBalanceSnapshot();
@@ -157,7 +172,7 @@ contract("Campl", ([deployer, user1, user2]) => {
     }
 
     async function issueIn(underlyingAmount: BN, account: string) {
-        const expectedDerivativeAmount = await campl.toDerivativeForIssue(underlyingAmount);
+        const derivativeAmount = await campl.toDerivativeForIssue(underlyingAmount);
 
         const [amplDiff, camplDiff] = await getDiffs(async () => {
             await ampl.approve(campl.address, underlyingAmount, {from: account});
@@ -167,7 +182,21 @@ contract("Campl", ([deployer, user1, user2]) => {
         expect(getBN(amplDiff, account)).to.be.bignumber.eq(underlyingAmount.neg());
         expect(getBN(amplDiff, campl.address)).to.be.bignumber.eq(underlyingAmount);
 
-        expect(getBN(camplDiff, account)).to.be.bignumber.eq(expectedDerivativeAmount);
+        expect(getBN(camplDiff, account)).to.be.bignumber.eq(derivativeAmount);
+    }
+
+    async function issue(derivativeAmount: BN, account: string) {
+        const underlyingAmount = await campl.toUnderlyingForIssue(derivativeAmount);
+
+        const [amplDiff, camplDiff] = await getDiffs(async () => {
+            await ampl.approve(campl.address, underlyingAmount, {from: account});
+            await campl.issue(account, derivativeAmount, { from: account });
+        });
+
+        expect(getBN(amplDiff, account)).to.be.bignumber.eq(underlyingAmount.neg());
+        expect(getBN(amplDiff, campl.address)).to.be.bignumber.eq(underlyingAmount);
+
+        expect(getBN(camplDiff, account)).to.be.bignumber.eq(derivativeAmount);
     }
 
     async function issueRandomly(account: string) {
@@ -247,6 +276,88 @@ contract("Campl", ([deployer, user1, user2]) => {
         return num.mul(percent).div(ONE_HUNDRED);
     }
 
+    function checkLogWhenIssue(logs: Log, from: string, to: string, camplAmount: BN, amplAmount: BN) {
+        expect(logs.length).to.be.eq(2);
+
+        let mintHelperAddress = "";
+        for(let i = 0; i < logs.length; i++) {
+            let log = logs[i];
+            switch(log.event) {
+                case "Issue": {
+                    expect(log.args['operator']).to.be.eq(from);
+                    expect(log.args['from']).to.be.eq(from);
+                    expect(log.args['to']).to.be.eq(to);
+                    expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+                    expect(log.args['underlyingAmount']).to.be.bignumber.eq(amplAmount);
+                    break;
+                }
+                case "Reclaim": {
+                    assert.fail();
+                    break;
+                }
+                case "Move": {
+                    if (log.args['from'] == ZERO_ADDRESS) {
+                        expect(log.args['operator']).to.be.eq(from);
+                        mintHelperAddress = log.args['to'];
+                        expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+                        expect(log.args['underlyingAmount']).to.be.bignumber.gte(amplAmount.sub(ONE)).lte(amplAmount);
+                    } else {
+                        expect(log.args['operator']).to.be.eq(mintHelperAddress);
+                        expect(log.args['from']).to.be.eq(mintHelperAddress);
+                        expect(log.args['to']).to.be.eq(to);
+                        expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+                        expect(log.args['underlyingAmount']).to.be.bignumber.gte(amplAmount.sub(ONE)).lte(amplAmount);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    function checkLogWhenReclaim(logs: Log, from: string, to: string, camplAmount: BN, amplAmount: BN) {
+        expect(logs.length).to.be.eq(2);
+
+        for(let i = 0; i < logs.length; i++) {
+            let log = logs[i];
+            switch(log.event) {
+                case "Issue": {
+                    assert.fail();
+                    break;
+                }
+                case "Reclaim": {
+                    expect(log.args['operator']).to.be.eq(from);
+                    expect(log.args['from']).to.be.eq(from);
+                    expect(log.args['to']).to.be.eq(to);
+                    expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+                    expect(log.args['underlyingAmount']).to.be.bignumber.eq(amplAmount);
+                    break;
+                }
+                case "Move": {
+                    expect(log.args['operator']).to.be.eq(from);
+                    expect(log.args['from']).to.be.eq(from);
+                    expect(log.args['to']).to.be.eq(ZERO_ADDRESS);
+                    expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+                    expect(log.args['underlyingAmount']).to.be.bignumber.gte(amplAmount.sub(ONE)).lte(amplAmount);
+                    break;
+                }
+            }
+        }
+    }
+
+    function checkMoveLog(logs: Log, operator: string, from: string, to: string, camplAmount: BN, amplAmount: BN) {
+        expect(logs.length).to.be.eq(1);
+
+        const log = logs[0];
+
+        expect(log.event).to.be.eq("Move")
+
+        expect(log.args['operator']).to.be.eq(operator);
+        expect(log.args['from']).to.be.eq(from);
+        expect(log.args['to']).to.be.eq(to);
+        expect(log.args['derivativeAmount']).to.be.bignumber.eq(camplAmount);
+        expect(log.args['underlyingAmount']).to.be.bignumber.eq(amplAmount);
+    }
+
     describe("AmplMock", async () => {
         describe("rebase", async () => {
             beforeEach(async () => {
@@ -288,14 +399,94 @@ contract("Campl", ([deployer, user1, user2]) => {
     });
 
     describe("Campl", async () => {
-        describe("basic erc20 test", async () => {
-            it("name, symbol, decimals, totalSupply, balanceOf, version", async () => {
+        describe("ERC20 test", async () => {
+            it("name, symbol, decimals, totalSupply, balanceOf", async () => {
                 expect(await campl.name()).to.be.eq(name);
                 expect(await campl.symbol()).to.be.eq(symbol);
                 expect(await campl.decimals()).to.be.bignumber.eq(decimal);
 
                 expect(await campl.totalSupply()).to.be.bignumber.eq(ZERO);
                 expect(await campl.balanceOf(deployer)).to.be.bignumber.eq(ZERO);
+            });
+
+            it('mint & burn should be undefined', async () => {
+                expect((campl as any).mint).to.be.undefined;
+                expect((campl as any)._mint).to.be.undefined;
+                expect((campl as any).burn).to.be.undefined;
+                expect((campl as any)._burn).to.be.undefined;
+            });
+
+            describe('transfer', async () => {
+                let user1InitialCampl = e18(100000);
+
+                before(async () => {
+                    await blockchain.saveSnapshotAsync();
+                    await ampl.approve(campl.address, constants.MAX_UINT256, {from: deployer});
+                    await campl.issue(user1, user1InitialCampl, {from: deployer});
+                });
+
+                after(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                beforeEach(async () => {
+                    await blockchain.saveSnapshotAsync();
+                });
+
+                afterEach(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                it ('should transfer token correctly', async () => {
+                    const [diff] = await getCamplDiff(async () => {
+                        await campl.transfer(user2, ONE, {from: user1});
+                    });
+
+                    expect(getBN(diff, user1)).to.be.bignumber.eq(ONE.neg());
+                    expect(getBN(diff, user2)).to.be.bignumber.eq(ONE);
+                });
+
+                it ('should NOT transfer token more than balance', async () => {
+                    await expectRevert(
+                        campl.transfer(user2, user1InitialCampl.add(ONE), {from: user1}),
+                        "ERC20: transfer amount exceeds balance"
+                    );
+
+                    await expectRevert(
+                        campl.transfer(user2, constants.MAX_UINT256, {from: user1}),
+                        "SafeMath: multiplication overflow"
+                    );
+                });
+
+                it('should transfer from approved user', async () =>{
+                    await campl.approve(deployer, ONE, {from: user1});
+                    expect(await campl.allowance(user1, deployer, {from: user1})).to.be.bignumber.equal(ONE);
+
+                    const [diff] = await getCamplDiff(async () => {
+                        await campl.transferFrom(user1, user2, ONE, {from: deployer});
+                    });
+
+                    expect(await campl.allowance(user1, deployer)).to.be.bignumber.equal(ZERO);
+
+                    expect(getBN(diff, user1)).to.be.bignumber.eq(ONE.neg());
+                    expect(getBN(diff, user2)).to.be.bignumber.eq(ONE);
+                });
+
+                it('should NOT transfer from approved user more than allowances', async () =>{
+                    await campl.approve(deployer, ONE, {from: user1});
+                    expect(await campl.allowance(user1, deployer, {from: user1})).to.be.bignumber.equal(ONE);
+
+                    await expectRevert(
+                        campl.transferFrom(user1, user2, TWO, {from: deployer}),
+                        "ERC20: transfer amount exceeds allowance"
+                    );
+
+                    await expectRevert(
+                        campl.transferFrom(user1, user2, constants.MAX_UINT256, {from: deployer}),
+                        "SafeMath: multiplication overflow"
+                    );
+                    expect(await campl.allowance(user1, deployer, {from: user1})).to.be.bignumber.equal(ONE);
+                });
             });
         });
 
@@ -371,7 +562,7 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
         });
 
-        describe.skip("Ampl value integrity test", async () => {
+        describe("Ampl value integrity test", async () => {
             let accounts: string[] = [];
             let accounts2: string[] = [];
             before(async () => {
@@ -493,10 +684,10 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
         });
 
-        describe.skip("Current totalSupply testing", async () => {
+        describe("Current totalSupply testing", async () => {
             beforeEach(async () => {
                 await blockchain.saveSnapshotAsync();
-                await rebaseToTotalSupply(new BN("114267479711606026"));
+                await rebaseToTotalSupply(new BN("139076241299642019"));
             });
 
             afterEach(async () => {
@@ -504,14 +695,341 @@ contract("Campl", ([deployer, user1, user2]) => {
             });
 
             it("test", async () => {
-                const underlyingAmount = e9(1);
+                const underlyingAmount = e9(50);
+                const expectCamplAmount = new BN("35951503673639114628");
                 await issueIn(underlyingAmount, deployer);
-                console.log((await campl.balanceOf(deployer)).toString());
+                expect(await campl.balanceOf(deployer)).to.be.bignumber.eq(expectCamplAmount);
             });
         });
 
-
         describe("IDerivativeToken test", async () => {
+            beforeEach(async () => {
+                await blockchain.saveSnapshotAsync();
+            });
+
+            afterEach(async () => {
+                await blockchain.revertAsync();
+            });
+
+            describe("basic views", async () => {
+                it("name, symbol, decimals, totalSupply, balanceOf, underlying", async () => {
+                    expect(await campl.name()).to.be.eq(name);
+                    expect(await campl.symbol()).to.be.eq(symbol);
+                    expect(await campl.decimals()).to.be.bignumber.eq(decimal);
+
+                    expect(await campl.totalSupply()).to.be.bignumber.eq(ZERO);
+                    expect(await campl.balanceOf(deployer)).to.be.bignumber.eq(ZERO);
+
+                    expect(await campl.underlying()).to.be.eq(ampl.address);
+                });
+            });
+
+            describe("events", async () => {
+                const targetEvents = ["Issue", "Move", "Reclaim"];
+
+                async function issueTest(from: string, to: string) {
+                    const camplAmount = e18(10);
+                    const amplAmount = await campl.toUnderlyingForIssue(camplAmount);
+
+                    await ampl.approve(campl.address, amplAmount, {from: from});
+                    await campl.issue(to, camplAmount, {from: from});
+
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    checkLogWhenIssue(logs, from, to, camplAmount, amplAmount);
+                }
+
+                async function issueInTest(from: string, to: string) {
+                    const amplAmount = e9(10);
+                    const camplAmount = await campl.toDerivativeForIssue(amplAmount);
+
+                    await ampl.approve(campl.address, amplAmount, {from: from});
+                    await campl.issueIn(to, amplAmount, {from: from});
+
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    checkLogWhenIssue(logs, from, to, camplAmount, amplAmount);
+                }
+
+                async function reclaimTest(from: string, to: string) {
+                    const camplAmount = e18(10);
+                    const amplAmount = await campl.toUnderlyingForIssue(camplAmount);
+
+                    await ampl.approve(campl.address, amplAmount, {from: from});
+                    await campl.issue(from, camplAmount, {from: from});
+
+                    await campl.reclaim(to, camplAmount, {from: from});
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    checkLogWhenReclaim(logs, from, to, camplAmount, amplAmount);
+                }
+
+                async function reclaimInTest(from: string, to: string) {
+                    const camplAmount = e18(10);
+                    const amplAmount = await campl.toUnderlyingForIssue(camplAmount);
+
+                    await ampl.approve(campl.address, amplAmount, {from: from});
+                    await campl.issue(from, camplAmount, {from: from});
+
+                    await campl.reclaimIn(to, amplAmount, {from: from});
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    checkLogWhenReclaim(logs, from, to, camplAmount, amplAmount);
+                }
+
+                it("Issue & Move emitted when issue to myself", async () => {
+                    await issueTest(user1, user1);
+                });
+
+                it("Issue & Move emitted when issue to other", async () => {
+                    await issueTest(user1, user2);
+                });
+
+                it("Issue & Move emitted when issueIn to myself", async () => {
+                    await issueInTest(user1, user1);
+                });
+
+                it("Issue & Move emitted when issueIn to other", async () => {
+                    await issueInTest(user1, user2);
+                });
+
+                it("Reclaim & Move emitted when reclaim to myself", async () => {
+                    await reclaimTest(user1, user1);
+                });
+
+                it("Reclaim & Move emitted when reclaim to other", async () => {
+                    await reclaimTest(user1, user2);
+                });
+
+                it("Reclaim & Move emitted when reclaimIn to myself", async () => {
+                    await reclaimInTest(user1, user1);
+                });
+
+                it("Reclaim & Move emitted when reclaimIn to other", async () => {
+                    await reclaimInTest(user1, user2);
+                });
+
+                it("Move emitted when transfer", async () => {
+                    const issueAmount = e18(10);
+
+                    await ampl.approve(campl.address, bigNum, {from: user1});
+                    await campl.issue(user1, issueAmount, {from: user1});
+
+                    const amount = e18(7);
+                    const amplAmount = await campl.toUnderlyingForIssue(amount);
+                    await campl.transfer(user2, amount, {from: user1});
+
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    await checkMoveLog(logs, user1, user1, user2, amount, amplAmount);
+                });
+
+                it("Move emitted when transferFrom", async () => {
+                    const issueAmount = e18(10);
+
+                    await ampl.approve(campl.address, bigNum, {from: user1});
+                    await campl.issue(user1, issueAmount, {from: user1});
+
+                    const amount = e18(7);
+                    const amplAmount = await campl.toUnderlyingForIssue(amount);
+
+                    await campl.approve(deployer, amount, {from: user1});
+                    await campl.transferFrom(user1, user2, amount, {from: deployer});
+
+                    const logs = await getContractLogs(campl, targetEvents, await getLatestBlockNumber());
+                    await checkMoveLog(logs, deployer, user1, user2, amount, amplAmount);
+                });
+            });
+
+            describe("exchange view", async () => {
+                it("zero", async () => {
+                    expect(await campl.toUnderlyingForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                    expect(await campl.toDerivativeForIssue(ZERO)).to.be.bignumber.eq(ZERO);
+                    expect(await campl.toUnderlyingForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                    expect(await campl.toDerivativeForReclaim(ZERO)).to.be.bignumber.eq(ZERO);
+                });
+
+                it("constants.MAX_UINT256", async () => {
+                    await expectRevert(campl.toUnderlyingForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                    await expectRevert(campl.toDerivativeForIssue(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                    await expectRevert(campl.toUnderlyingForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                    await expectRevert(campl.toDerivativeForReclaim(constants.MAX_UINT256), "SafeMath: multiplication overflow");
+                });
+
+                it("toUnderlyingForIssue & rebase", async () => {
+                    const camplAmount = e18(1);
+                    const amplAmount = e9(0.5);
+                    expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                    const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                    await ampl.rebase(rebaseDelta, {from: deployer});
+                    expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                });
+
+                it("toDerivativeForIssue & rebase", async () => {
+                    const amplAmount = e9(1);
+                    const camplAmount = e18(2);
+                    expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                    const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                    await ampl.rebase(rebaseDelta, {from: deployer});
+                    expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                });
+
+                it("toUnderlyingForReclaim & rebase", async () => {
+                    const camplAmount = e18(1);
+                    const amplAmount = e9(0.5);
+                    expect(await campl.toUnderlyingForReclaim(camplAmount)).to.be.bignumber.eq(amplAmount);
+
+                    const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                    await ampl.rebase(rebaseDelta, {from: deployer});
+                    expect(await campl.toUnderlyingForIssue(camplAmount)).to.be.bignumber.eq(getPercentOf(amplAmount, new BN("50")));
+                });
+
+                it("toDerivativeForReclaim & rebase", async () => {
+                    const amplAmount = e9(1);
+                    const camplAmount = e18(2);
+                    expect(await campl.toDerivativeForReclaim(amplAmount)).to.be.bignumber.eq(camplAmount);
+
+                    const rebaseDelta = getPercentOf(await ampl.totalSupply(), new BN("50")).sub(await ampl.totalSupply());
+                    await ampl.rebase(rebaseDelta, {from: deployer});
+                    expect(await campl.toDerivativeForIssue(amplAmount)).to.be.bignumber.eq(getPercentOf(camplAmount, new BN("200")));
+                });
+
+                it("toUnderlyingForIssue & toDerivativeForIssue", async () => {
+                    const camplAmount = e18(1);
+                    expect(await campl.toDerivativeForIssue(
+                        await campl.toUnderlyingForIssue(camplAmount))).to.be.bignumber.eq(camplAmount);
+                });
+
+                it("toDerivativeForIssue & toUnderlyingForIssue", async () => {
+                    const amplAmount = e9(1);
+                    expect(await campl.toUnderlyingForIssue(
+                        await campl.toDerivativeForIssue(amplAmount))).to.be.bignumber.eq(amplAmount);
+                });
+
+                it("toUnderlyingForReclaim & toDerivativeForReclaim", async () => {
+                    const camplAmount = e18(1);
+                    expect(await campl.toDerivativeForReclaim(
+                        await campl.toUnderlyingForReclaim(camplAmount))).to.be.bignumber.eq(camplAmount);
+                });
+
+                it("toDerivativeForReclaim & toUnderlyingForReclaim", async () => {
+                    const amplAmount = e9(1);
+                    expect(await campl.toUnderlyingForReclaim(
+                        await campl.toDerivativeForReclaim(amplAmount))).to.be.bignumber.eq(amplAmount);
+                });
+
+                it("toUnderlyingForIssue & toDerivativeForReclaim", async () => {
+                    const camplAmount = e18(1);
+                    expect(await campl.toDerivativeForReclaim(
+                        await campl.toUnderlyingForIssue(camplAmount))).to.be.bignumber.eq(camplAmount);
+                });
+
+                it("toDerivativeForIssue & toUnderlyingForReclaim", async () => {
+                    const amplAmount = e9(1);
+                    expect(await campl.toUnderlyingForReclaim(
+                        await campl.toDerivativeForIssue(amplAmount))).to.be.bignumber.eq(amplAmount);
+                });
+            });
+
+            describe("issue", async () => {
+                const targetEvents = ["Issue", "Move", "Reclaim"];
+
+                beforeEach(async () => {
+                    await blockchain.saveSnapshotAsync();
+                });
+
+                afterEach(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                async function issueTest(from: string, to: string) {
+                    const camplAmount = e18(10);
+                    const amplAmount = await campl.toUnderlyingForIssue(camplAmount);
+
+                    await ampl.approve(campl.address, amplAmount, {from: from});
+
+                    await campl.issue(to, camplAmount, {from: from});
+                }
+
+                it("success: to myself", async () => {
+
+                });
+
+                it("success: to other", async () => {
+
+                });
+
+                it("fail: ..", async () => {
+
+                });
+
+                it("fail: ..", async () => {
+
+                });
+            });
+
+            describe("issueIn", async () => {
+                beforeEach(async () => {
+                    await blockchain.saveSnapshotAsync();
+                });
+
+                afterEach(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                it("success to myself", async () => {
+
+                });
+
+                it("success to other", async () => {
+
+                });
+
+                it("fail when ..", async () => {
+
+                });
+            });
+
+            describe("reclaim", async () => {
+                beforeEach(async () => {
+                    await blockchain.saveSnapshotAsync();
+                });
+
+                afterEach(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                it("success to myself", async () => {
+
+                });
+
+                it("success to other", async () => {
+
+                });
+
+                it("fail when ..", async () => {
+
+                });
+            });
+
+            describe("reclaimIn", async () => {
+                beforeEach(async () => {
+                    await blockchain.saveSnapshotAsync();
+                });
+
+                afterEach(async () => {
+                    await blockchain.revertAsync();
+                });
+
+                it("success to myself", async () => {
+
+                });
+
+                it("success to other", async () => {
+
+                });
+
+                it("fail when ..", async () => {
+
+                });
+            });
         });
 
     });

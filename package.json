@@ -43,7 +43,7 @@
     "totaltest": "yarn clean && yarn lint && yarn generate && yarn test",
     "lint": "npx solium -d contracts/",
     "tsc": "tsc --noEmit",
-    "flat": "truffle-flattener contracts/Campl.sol > flattened/flattenedCampl.sol"
+    "flat": "truffle-flattener contracts/Campl.sol > flattened/flattenedCampl.sol && truffle-flattener contracts/mocks/AmplMock.sol > flattened/flattenedAmplMock.sol"
   },
   "_moduleAliases": {
     "@testUtils": "testUtils",
