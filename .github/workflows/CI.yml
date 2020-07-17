@@ -40,7 +40,6 @@ jobs:
 
       - run: npm install -g truffle@5.1.15
       - run: npm install -g ganache-cli@6.9.1
-      - run: npm install -g ethlint
 
       - run: yarn
 

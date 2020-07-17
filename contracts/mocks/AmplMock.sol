@@ -1,4 +1,4 @@
-pragma solidity ^0.6.8;
+pragma solidity 0.6.8;
 
 import { SafeMath } from "@openzeppelin/contracts/math/SafeMath.sol";
 
@@ -46,7 +46,7 @@ contract AmplMock {
         pure
         returns (int256)
     {
-        require(a != MIN_INT256);
+        require(a != MIN_INT256, "AmplMock.abs: a != MIN_INT256");
         return a < 0 ? -a : a;
     }
 

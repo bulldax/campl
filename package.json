@@ -22,6 +22,7 @@
     "ethlint": "^1.2.5",
     "ganache-cli": "^6.9.1",
     "module-alias": "^2.2.2",
+    "solhint": "^3.0.0",
     "tiny-promisify": "^1.0.0",
     "truffle": "^5.1.26",
     "truffle-typings": "^1.0.8",
@@ -41,7 +42,7 @@
     "deploy-gsn": "npx gsn start",
     "test": "./scripts/launch.sh npx truffle test",
     "totaltest": "yarn clean && yarn lint && yarn generate && yarn test",
-    "lint": "npx solium -d contracts/",
+    "lint": "npx solhint contracts/Campl.sol contracts/interfaces/*.sol",
     "tsc": "tsc --noEmit",
     "flat": "truffle-flattener contracts/Campl.sol > flattened/flattenedCampl.sol && truffle-flattener contracts/mocks/AmplMock.sol > flattened/flattenedAmplMock.sol"
   },
