@@ -4,6 +4,8 @@
 
 ![logo](https://github.com/eljovist/campl/raw/master/imgs/c_1.png)
 
+**This is not an audited proof-of-concept. Use at your own risk.**
+
 Campl (CAMPL) is an ERC20 token which tracks Ampleforth (AMPL) market cap (MC).
 
 Owing to Ampleforth (AMPL) elastic supply mechanism, its supply expands and contracts in response to the demand. Supply changes occur via a smart contract function (rebase) every 24 hours resulting in adjusted number of tokens in each holder's wallet proportionally.  The amount of CAMPL tokens, however, does not change during rebases, because it tracks the total market cap of AMPL.
@@ -19,6 +21,14 @@ Proposed CAMPL smart contract offers:
 $ yarn
 $ yarn totaltest
 ```
+
+## mainnet
+
+Deployed at [0xa4a08ee55120165b24bf8213a6ffb9eda6ff8d19](https://etherscan.io/address/0xa4a08ee55120165b24bf8213a6ffb9eda6ff8d19)
+
+## audit
+
+The smart contract is not audited yet. We are currently applying for the audit and the audit section will be updated when the audit is done.
 
 ## documentation
 
