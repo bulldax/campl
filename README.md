@@ -2,9 +2,9 @@
 
 ![CI](https://github.com/eljovist/campl/workflows/CI/badge.svg)
 
-![logo](https://github.com/eljovist/campl/raw/master/imgs/c_1.png)
-
 **This is not an audited proof-of-concept. Use at your own risk.**
+
+![logo](https://github.com/eljovist/campl/raw/master/imgs/c_1.png)
 
 Campl (CAMPL) is an ERC20 token which tracks Ampleforth (AMPL) market cap (MC).
 
