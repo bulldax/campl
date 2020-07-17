@@ -12,7 +12,7 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     IERC20 ampl;
     uint256 constant E26 = 1.00E26;
 
-    constructor(IERC20 _ampl) public ERC20("Compatable AMPL", "CAMPL") {
+    constructor(IERC20 _ampl) public ERC20("Compatible AMPL", "CAMPL") {
         ampl = _ampl;
     }
 
@@ -27,14 +27,14 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
     function issue(address to, uint256 derivativeAmount) external override {
         require(derivativeAmount != 0, "Campl.issue: 0 amount");
         uint256 underlyingAmount = toUnderlyingForIssue(derivativeAmount);
-
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issue: not enough AMPL allowance");
         require(ampl.balanceOf(_msgSender()) >= underlyingAmount, "Campl.issue: not enough AMPL balance");
-        ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
 
         _mint(to, derivativeAmount);
 
         emit Issue(_msgSender(), _msgSender(), to, derivativeAmount, underlyingAmount);
+
+        ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
     }
 
     function issueIn(address to, uint256 underlyingAmount) external override {
@@ -42,11 +42,12 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
         require(ampl.allowance(_msgSender(), address(this)) >= underlyingAmount, "Campl.issueIn: not enough AMPL allowance");
         require(ampl.balanceOf(_msgSender()) >= underlyingAmount, "Campl.issueIn: not enough AMPL balance");
         uint256 derivativeAmount = toDerivativeForIssue(underlyingAmount);
-        ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
 
         _mint(to, derivativeAmount);
 
         emit Issue(_msgSender(), _msgSender(), to, derivativeAmount, underlyingAmount);
+
+        ampl.transferFrom(_msgSender(), address(this), underlyingAmount);
     }
 
     function reclaim(address to, uint256 derivativeAmount) external override {
@@ -57,8 +58,9 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
 
         _burn(_msgSender(), derivativeAmount);
 
-        ampl.transfer(to, underlyingAmount);
         emit Reclaim(_msgSender(), _msgSender(), to, derivativeAmount, underlyingAmount);
+
+        ampl.transfer(to, underlyingAmount);
     }
 
     function reclaimIn(address to, uint256 underlyingAmount) external override {
@@ -68,8 +70,9 @@ contract Campl is ERC20, ICompatibleDerivativeToken {
 
         _burn(_msgSender(), derivativeAmount);
 
-        ampl.transfer(to, underlyingAmount);
         emit Reclaim(_msgSender(), _msgSender(), to, derivativeAmount, underlyingAmount);
+
+        ampl.transfer(to, underlyingAmount);
     }
 
     function underlying() external view override returns (address) {

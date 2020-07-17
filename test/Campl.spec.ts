@@ -19,16 +19,10 @@ import { e9, e18 } from '@testUtils/units';
 import { ZERO, ONE, TWO, THREE, ONE_HUNDRED, ZERO_ADDRESS } from '@testUtils/constants';
 
 import { expectRevert, constants } from '@openzeppelin/test-helpers';
-import { hexlify, keccak256, toUtf8Bytes } from 'ethers/utils'
-import { ecsign, ECDSASignature } from 'ethereumjs-util'
 
-import BigNumber from 'bignumber.js';
-import { ALPN_ENABLED } from 'constants';
-
-import { Account, getSnapshot, Snapshot, Snap, getValueByAddress, getValue } from '@testUtils/snapshot';
+import { Account, getSnapshot, Snapshot } from '@testUtils/snapshot';
 import { bnSnapshotDiff, getBN } from '@testUtils/bnSnapshot';
-import { getDiffieHellman } from 'crypto';
-import { getContractLogs, LogData, Log } from '@testUtils/printLogs';
+import { getContractLogs, Log } from '@testUtils/printLogs';
 
 const web3: Web3 = getWeb3();
 const blockchain = new Blockchain(web3.currentProvider);
@@ -65,7 +59,7 @@ async function getLatestBlockNumber(): Promise<number> {
 contract("Campl", ([deployer, user1, user2]) => {
     let campl: CamplInstance;
     let ampl: AmplMockInstance;
-    const name = "Compatable AMPL";
+    const name = "Compatible AMPL";
     const symbol = "CAMPL";
     const decimal = new BN(18);
 
@@ -597,12 +591,12 @@ contract("Campl", ([deployer, user1, user2]) => {
                 await reclaimRandomly(account);
 
                 const amplTotalSupply = await ampl.totalSupply();
-                // rebase로 인한 오차. 최대 account len 만큼 생길 수 있다.
+                // error by rebase. it could be maxium account len.
                 expect(await sumAmpl(accounts2)).to.be.bignumber
                     .lte(amplTotalSupply)
                     .gte(amplTotalSupply.sub(new BN(accounts2.length)));
 
-                // 횟수에 따라 누적되는 issue, reclaim으로 인한 오차 + rebase로 인한 오차 (최대 account len)
+                // cumulatrated issue, reclaim errors + rebase error
                 expect(await sumAmplAndCamplUnderlying(accounts)).to.be.bignumber
                     .lte(amplTotalSupply)
                     .gte(amplTotalSupply.sub(new BN(issueReclaimError + accounts2.length)));
@@ -615,7 +609,7 @@ contract("Campl", ([deployer, user1, user2]) => {
             it("[issue, reclaim]x10", async () => {
                 expect(await sumAmplAndCamplUnderlying(accounts)).to.be.bignumber.eq(await ampl.totalSupply());
                 for(let i=0; i < 10; i++) {
-                    // issue, reclaim 의 오차는 누적된다. 그 오차는 campl에 쌓인다.
+                    // cumulated issue, reclaim errors are remains in campl
                     await issueAndReclaimTest(user1, i+1);
                 }
                 expect(await sumAmplAndCamplUnderlying(accounts)).to.be.bignumber.not.eq(await ampl.totalSupply());
@@ -643,11 +637,11 @@ contract("Campl", ([deployer, user1, user2]) => {
                 }
 
                 await rebaseToTotalSupply(totalSupply);
-                // rebase 중에 campl과 user1간의 전송으로 인한 오차가 남아닜다.
+                // error by transfer between user1, campl during rebase
                 expect(await sumAmpl(accounts2)).to.be.bignumber
                     .lte(totalSupply)
                     .gte(totalSupply.sub(new BN(2)));
-                // issue, reclaim 오차는 여전히 남아 있다.
+                //
                 expect(await sumAmplAndCamplUnderlying(accounts)).to.be.bignumber
                     .lte(totalSupply)
                     .gte(totalSupply.sub(new BN(loopCount+1)));
@@ -673,11 +667,9 @@ contract("Campl", ([deployer, user1, user2]) => {
                 }
 
                 await rebaseToTotalSupply(totalSupply);
-                // rebase 중에 campl과 user1, user2간의 전송으로 인한 오차가 남아닜다.
                 expect(await sumAmpl(accounts2)).to.be.bignumber
                     .lte(totalSupply)
                     .gte(totalSupply.sub(new BN(3)));
-                // issue, reclaim 오차는 여전히 남아 있다.
                 expect(await sumAmplAndCamplUnderlying(accounts)).to.be.bignumber
                     .lte(totalSupply)
                     .gte(totalSupply.sub(new BN(loopCount*2+1)));
