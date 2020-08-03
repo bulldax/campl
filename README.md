@@ -54,3 +54,6 @@ AMPL is reclaimed with CAMPL by ‘reclaim’ function. At this time, CAMPL is b
 ### reclaimIn
 ‘reclaimIn’ has the same function as `reclaim`, but a number of AMPL receivable is shown as `underlyingAmount` parameter.
 The corresponding CAMPL to be burned through the `toDerivativeForReclaim` view method is displayed.
+
+---
+Campl by [Jongseok Park](https://linkedin.com/in/종석-박-57620869), [Ignas Tauras](https://www.linkedin.com/in/ignas-tauras-9b83a956), [Sunga KIM](https://twitter.com/crypto_sis)
